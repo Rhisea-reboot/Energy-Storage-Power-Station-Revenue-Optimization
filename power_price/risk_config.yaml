@@ -1,0 +1,37 @@
+# risk_config.yaml
+# ===============
+# Day 13 风险参数配置文件 — 便于调参与实验对比。
+
+# ---- A. 风险厌恶系数 (Confidence Discounting) ----
+# λ 越大，对高不确定性策略的惩罚越重
+risk_aversion: 0.1
+
+# ---- B. 分位数保守估计 (Quantile-based) ----
+# z_score 取值参考:
+#   1.28  -> 80% 置信度
+#   1.645 -> 90% 置信度
+#   1.96  -> 95% 置信度
+z_score: 1.28
+
+# ---- C. 收益阈值机制 (Profit Threshold) ----
+# fixed_profit_threshold: 固定阈值（元）。设为 null 则启用自适应分位数阈值
+fixed_profit_threshold: null
+# 自适应分位数：只执行收益排在前 (100 - percentile)% 的策略
+profit_percentile: 25.0
+
+# ---- D. 极端价格过滤 (Extreme Price Filter) ----
+negative_threshold: 0.0   # 低于此值视为负电价，强制充电
+spike_threshold: 800.0    # 高于此值视为尖峰，强制放电
+
+# ---- Monte-Carlo 鲁棒性检验 ----
+use_monte_carlo: false
+n_monte_carlo_scenarios: 100
+
+# ---- 多模型集成 ----
+# 可选: simple_average, variance_weighting, quantile_fusion
+ensemble_method: "simple_average"
+
+# ---- 储能系统物理参数 ----
+power_mw: 1000
+duration_slots: 8
+capacity_mwh: 8000
