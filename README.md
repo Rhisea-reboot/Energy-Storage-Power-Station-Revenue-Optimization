@@ -1,139 +1,164 @@
-# 电力现货电价预测与储能策略优化项目
+# 电力现货电价预测与储能策略优化
 
-本项目基于 **PyTorch** 深度学习模型预测蒙西地区电力现货电价，并结合 **C++/Python** 策略搜索算法制定储能系统充放电计划，实现收益最大化。
+基于 PyTorch 深度学习模型预测蒙西地区电力现货电价，结合 C++/Python 策略搜索算法制定储能充放电计划，实现收益最大化。
 
-> 赛题说明见 `Plan.md`，分阶段执行计划见 `Achieve.md`（成员A）、`B-Plan.md`（成员B）、`C_Plan.md`（成员C）。
+> 赛题说明见 `Plan.md`，分阶段执行计划见 `Achieve.md`（数据预处理）、`B-Plan.md`（模型训练）、`C_Plan.md`（策略算法）。AI Agent 协作规范见 `AGENTS.md`。
 
 ---
 
-## 一、目录结构（数据/模型/输出分离）
+## 目录结构
 
 ```
 .
 ├── Plan.md / Achieve.md / B-Plan.md / C_Plan.md   # 计划文档
-├── coding_standards.md                              # 编码规范
-├── README.md                                        # 本文档
+├── AGENTS.md                                      # AI Agent 协作指南
+├── coding_standards.md                            # 编码规范
+├── README.md                                      # 本文档
 │
-├── run_pipeline.py                                  # 【端到端流水线入口】
+├── run_pipeline.py                                # 端到端流水线入口
 │
-# ---------- 阶段一：数据预处理（成员A） ----------
-├── Test_Weather_processor.py        # Day 1: NC气象降维
-├── Dataaligning.py                  # Day 2: 多源15min对齐
-├── Dataset.py                       # Day 3: PyTorch Dataset封装
+# ---------- 数据预处理 ----------
+├── Test_Weather_processor.py        # NC 气象降维
+├── Dataaligning.py                  # 多源 15min 对齐
+├── Dataset.py                       # PyTorch Dataset 封装
 │
-# ---------- 阶段二：特征工程 + 模型（成员B） ----------
-├── features.py                      # Day 4-7: 特征工程
-├── model.py                         # Day 8: ResNet-MLP架构
-├── train.py                         # Day 9-10: 训练脚本
-├── inference.py                     # Day 11: 推理接口
+# ---------- 特征工程 + 模型 ----------
+├── features.py                      # 特征工程库
+├── model.py                         # ResNet-MLP + Time Embedding 架构
+├── train.py                         # 训练脚本（50 epoch，动态 confidence 权重）
+├── inference.py                     # 推理接口（单日/批量/滚动预测）
+├── lgb_baseline.py                  # LightGBM 基线（可选）
 │
-# ---------- 阶段三：策略算法（成员C） ----------
+# ---------- 策略算法 ----------
 └── power_price/
-    ├── data/                        # 【数据目录】原始数据 + 中间产物
-    │   ├── weather_raw/             # 原始NC气象文件
-    │   ├── mengxi_node_price_selected.csv      # 原始电价
-    │   ├── mengxi_boundary_anon_filtered.csv   # 原始边界条件
-    │   ├── weather_features.csv                # Day 1 输出
-    │   ├── aligned_15min_full.csv              # Day 2 输出
-    │   ├── aligned_15min_processed.csv         # 特征工程调试输出
-    │   ├── feature_mask.json                   # Day 4-7 输出
-    │   ├── scaler.pkl                          # Day 3/9 输出
-    │   ├── pred.npy                            # Day 11 推理输出
-    │   └── conf.npy                            # Day 11 推理输出
+    ├── data/                        # 数据与中间产物
+    │   ├── weather_raw/             # 原始 NC 气象文件
+    │   ├── weather_features.csv     # 气象特征
+    │   ├── aligned_15min_full.csv   # 对齐主表（Dataaligning.py 输出）
+    │   ├── aligned_15min_processed.csv  # 特征工程后宽表（features.py 输出）
+    │   ├── feature_mask.json        # 筛选后的特征列表（≤50 维，test 兼容）
+    │   ├── scaler.pkl               # StandardScaler
+    │   ├── pred.npy / conf.npy      # 单日推理输出（调试用）
+    │   ├── preds/                   # 批量预测 .npy 存放目录
+    │   ├── mengxi_node_price_selected.csv
+    │   └── mengxi_boundary_anon_filtered.csv
     │
-    ├── models/                      # 【模型目录】
-    │   └── best_model.pt            # Day 9-10 训练输出
+    ├── models/
+    │   └── best_model.pt            # 模型权重
     │
-    ├── output/                      # 【策略输出目录】
-    │   └── output.csv               # Day 15 最终提交格式
+    ├── output/                      # 策略输出
+    │   └── output.csv               # 最终提交格式（5664 行）
     │
-    ├── test_data/                   # 【测试数据目录】
-    │   └── test_in_feature_ori.csv  # 原始test特征（8列中文，无电价）
+    ├── test_data/
+    │   └── test_in_feature_ori.csv  # 原始 test 特征（8 列中文，59 天）
     │
-    ├── prepare_test_features.py     # Day 15: 原始test特征→完整50维特征
-    ├── strategy_core.cpp            # Day 12: C++核心搜索
+    ├── strategy_core.cpp            # C++ 核心搜索
     ├── strategy_core.so             # 编译后的动态库
-    ├── strategy_wrapper.py          # Day 12: Python封装
-    ├── strategy_features.py         # Day 5: 物理特征辅助
-    ├── risk_mgmt.py                 # Day 13: 风险管理
-    ├── risk_config.yaml             # Day 13: 风险参数配置
-    ├── monte_carlo_validator.py     # Day 13: Monte-Carlo验证
-    ├── ensemble_strategy.py         # Day 14: 多模型集成
-    └── main.py                      # Day 15: 策略生成主入口
+    ├── strategy_wrapper.py          # Python 封装（ctypes + 纯 Python 降级）
+    ├── strategy_features.py         # 策略辅助特征
+    ├── risk_mgmt.py                 # 风险管理
+    ├── risk_config.yaml             # 风险参数配置
+    ├── monte_carlo_validator.py     # Monte-Carlo 验证
+    ├── ensemble_strategy.py         # 多模型集成
+    ├── prepare_test_features.py     # Test 特征构造（原始 8 列 → 完整 50 维）
+    └── main.py                      # 策略生成主入口
 ```
 
 ---
 
-## 二、各文件详细分工（含输入/输出路径）
+## 快速开始
 
-### 阶段一：数据预处理（成员 A）
+### 环境安装
 
-#### 1. `Test_Weather_processor.py` — 气象数据降维（Day 1）
+```bash
+pip install torch pandas numpy scikit-learn xarray joblib pyyaml lightgbm
+```
 
-| 项目 | 路径 |
-|:---|:---|
-| **输入** | `power_price/data/weather_raw/*.nc` |
-| **输出** | `power_price/data/weather_features.csv` |
+> **GPU 支持**：若 PyTorch 无法检测到 CUDA，请检查 `LD_LIBRARY_PATH` 是否包含 conda 的 libstdc++。已配置激活脚本：`/home/rhisea/miniconda3/etc/conda/activate.d/libstdcxx.sh`
 
-**使用方法**：
+C++ 策略库已预编译为 `power_price/strategy_core.so`。若需重新编译：
+
+```bash
+cd power_price
+g++ -O2 -shared -fPIC -o strategy_core.so strategy_core.cpp
+```
+
+### 全流程运行（推荐）
+
+```bash
+# 1. 训练模型（50 epoch，GPU 加速约 10~20 分钟）
+python run_pipeline.py --stage3 --epochs 50
+
+# 2. 从原始 test 特征生成提交结果（59 天，5664 行）
+python run_pipeline.py \
+  --input-csv power_price/test_data/test_in_feature_ori.csv \
+  --output power_price/output/output.csv
+```
+
+**输出验证**：`output.csv` 应为 `(5664, 3)`，对应 59 天 × 96 点/天。若只有 `(96, 3)`，说明未走 `--input-csv` 流程。
+
+### 分阶段运行
+
+```bash
+# 仅数据预处理 + 特征工程
+python run_pipeline.py --stage1
+python run_pipeline.py --stage2
+
+# 仅模型训练（可调 epochs、batch size、patience）
+python run_pipeline.py --stage3 --epochs 100 --batch-size 128
+
+# 从已有模型直接生成提交结果（跳过训练）
+python run_pipeline.py \
+  --input-csv power_price/test_data/test_in_feature_ori.csv \
+  --output power_price/output/output.csv
+```
+
+---
+
+## 核心模块说明
+
+### 数据预处理
+
+#### `Test_Weather_processor.py` — 气象数据降维
+
 ```bash
 python Test_Weather_processor.py
 ```
-- 提取 NC 文件中 6 类气象变量的空间统计（mean/max/min/std）
-- 构建风速合成、太阳辐射潜力等派生特征
-- 输出为 1 小时分辨率 CSV（Day 2 会插值为 15 分钟）
 
----
+- 输入：`power_price/data/weather_raw/*.nc`
+- 输出：`power_price/data/weather_features.csv`
+- 提取 6 类气象变量的空间统计（mean/max/min/std），构建风速合成、太阳辐射潜力等派生特征
 
-#### 2. `Dataaligning.py` — 多源数据对齐（Day 2）
+#### `Dataaligning.py` — 多源数据对齐
 
-| 项目 | 路径 |
-|:---|:---|
-| **输入1 电价** | `power_price/data/mengxi_node_price_selected.csv`（目标列 `A`） |
-| **输入2 边界条件** | `power_price/data/mengxi_boundary_anon_filtered.csv`（中文列名自动映射） |
-| **输入3 气象** | `power_price/data/weather_features.csv`（Day 1 输出） |
-| **输出** | `power_price/data/aligned_15min_full.csv` |
-
-**使用方法**：
 ```bash
 python Dataaligning.py
 ```
-- 统一时区为 `Asia/Shanghai`，重采样到 15 分钟分辨率
-- 计算竞价空间、净负荷、新能源渗透率、预测误差等电力系统衍生特征
-- 添加正弦-余弦时间编码（`time_sin/cos`, `dow_sin/cos`, `month_sin/cos`）
-- 输出宽表列数约 60~76 维（供后续特征筛选）
 
----
+- 输入：
+  - 电价 `power_price/data/mengxi_node_price_selected.csv`（目标列 `A`）
+  - 边界条件 `power_price/data/mengxi_boundary_anon_filtered.csv`（中文列名自动映射为英文）
+  - 气象 `power_price/data/weather_features.csv`
+- 输出：`power_price/data/aligned_15min_full.csv`
+- 统一时区 `Asia/Shanghai`，重采样到 15 分钟，计算竞价空间、净负荷、新能源渗透率等衍生特征，添加 sin/cos 时间编码
 
-#### 3. `Dataset.py` — PyTorch 数据封装（Day 3）
+#### `Dataset.py` — PyTorch 数据封装
 
-| 项目 | 路径 |
-|:---|:---|
-| **输入** | `power_price/data/aligned_15min_full.csv` |
-| **输出** | `power_price/data/scaler.pkl`（直接运行 `Dataset.py` 时生成） |
-
-**使用方法**：
 ```bash
 python Dataset.py
 ```
-- 按时间先后分割训练/验证集（严禁随机打乱）
-- 训练集 `fit_transform`，验证集 `transform`（防止数据泄露）
-- 样本维度：`x: (batch, 672, F)` → `y: (batch, 96)`
-- **注意**：实际训练时 `train.py` 会重新生成与 `feature_mask.json` 维度一致的 `scaler.pkl`
+
+- 输入：`power_price/data/aligned_15min_processed.csv`（特征工程后的宽表）
+- 滑动窗口：输入 672 点（7 天）→ 输出 96 点（1 天）
+- 按时间先后分割训练/验证（前 10 个月训练，后 2 个月验证），`shuffle=False`
+- 训练集 `fit_transform`，验证集 `transform`（防数据泄露）
 
 ---
 
-### 阶段二：特征工程与模型（成员 B）
+### 特征工程与模型
 
-#### 4. `features.py` — 特征工程库（Day 4-7）
+#### `features.py` — 特征工程
 
-| 项目 | 路径 |
-|:---|:---|
-| **输入** | `power_price/data/aligned_15min_full.csv` |
-| **输出** | `power_price/data/feature_mask.json` |
-| **调试输出** | `power_price/data/aligned_15min_processed.csv` |
-
-**使用方法**：
 ```bash
 python -c "
 import pandas as pd
@@ -143,70 +168,59 @@ df_out, cols = build_feature_pipeline(df, target_col='A')
 print('Selected features:', len(cols))
 "
 ```
-- 注入时间周期编码、策略滚动统计、滞后特征（`price_lag_96` 等）
-- 通过 Pearson 相关性筛选 Top-50 特征，生成 `feature_mask.json`
-- 该掩码供 `train.py`、`inference.py`、`Dataset.py` 共享
 
----
+- 注入时间周期编码、多尺度滚动统计（8/24/96/192/672）、差分特征、日内统计、峰谷比
+- **自动排除 `A_*` 衍生特征**（`A_lag_1`、`A_rolling_mean_8` 等）：测试期不提供历史真实电价，这些特征在 test 期间无法正确计算
+- 通过 Pearson 相关性筛选 Top-50 test-兼容特征，生成 `power_price/data/feature_mask.json`
+- 输出 `power_price/data/aligned_15min_processed.csv`
 
-#### 5. `model.py` — ResNet-MLP 模型（Day 8）
+#### `model.py` — ResNet-MLP + Time Embedding
 
-| 项目 | 路径 |
-|:---|:---|
-| **输入** | 动态特征维度（由 `power_price/data/feature_mask.json` 决定） |
-| **输出** | 无文件输出，仅验证维度 |
-
-**使用方法**：
 ```bash
 python model.py
 ```
-- 输入：`[Batch, 672, feature_dim]`，默认 `feature_dim = 50`
-- 输出：`price [batch, 96]` + `confidence [batch, 96]`
-- 双头输出：电价预测头 + 置信度估计头（softplus 激活保证正值）
 
----
+架构：
+```
+Input [B, 672, F]
+  → Linear(F → hidden)
+  → Conv1d(hidden → hidden, kernel=3, padding=1)
+  → ResidualBlock(Conv1d) × layers
+  → Conv1d(hidden → hidden, kernel=7, stride=7)   # 672→96
+  → + TimeEmbedding(96, hidden)                    # 打破输出同质化
+  → Linear(hidden → 1) per time-step              # [B, 96]
+```
 
-#### 6. `train.py` — 训练脚本（Day 9-10）
+默认参数：`hidden=128`, `layers=4`, `feature_dim` 由 `feature_mask.json` 动态决定。
 
-| 项目 | 路径 |
-|:---|:---|
-| **输入1 数据** | `power_price/data/aligned_15min_full.csv` |
-| **输入2 特征掩码** | `power_price/data/feature_mask.json` |
-| **输出1 模型权重** | `power_price/models/best_model.pt` |
-| **输出2 Scaler** | `power_price/data/scaler.pkl`（与 feature_mask 同维度） |
+> **为什么加 Time Embedding**：早期版本去掉全局池化后改用时间压缩卷积，但 Conv1d 输出头导致 96 个时间步的预测高度同质化（std 仅 0.05）。Time Embedding 为每个输出时间步提供独立偏置，强制产生日内差异。
 
-**使用方法**：
+#### `train.py` — 训练脚本
+
 ```bash
 python train.py
 ```
-- 加载 `feature_mask.json` 中的 50 维特征进行训练
-- Loss = Huber Loss + 0.2 × 置信度拟合 MSE
-- 验证集 MSE 最低时保存模型
-- **训练结束后自动保存 `scaler.pkl`**，供推理复用
 
----
+- 加载 `feature_mask.json` 中的特征进行训练
+- Loss = Huber Loss + α × 置信度 MSE
+  - α 动态：前 3 epoch 为 `0.2`（预热），之后为 `0.6`
+- Optimizer: AdamW (lr=1e-3) + **CosineAnnealingLR**
+- **Early Stopping**: 验证集 MSE 连续 `patience` 轮（默认 10）不下降则停止
+- 验证集输出 **Conf-Error Correlation**（评估置信度质量）
+- 保存模型基于 **ValMSE 最低**
+- **注意**：默认 50 epoch。若 ValMSE 仍高，可增至 100 epoch 或调大 `patience`
 
-#### 7. `inference.py` — 推理接口（Day 11）
+#### `inference.py` — 推理接口
 
-| 项目 | 路径 |
-|:---|:---|
-| **输入1 数据** | `power_price/data/aligned_15min_full.csv` 或构造好的完整特征 DataFrame |
-| **输入2 模型** | `power_price/models/best_model.pt` |
-| **输入3 Scaler** | `power_price/data/scaler.pkl` |
-| **输入4 特征掩码** | `power_price/data/feature_mask.json` |
-| **输出1 预测** | `power_price/data/pred.npy`（运行 `inference.py` 时自动保存） |
-| **输出2 置信度** | `power_price/data/conf.npy`（运行 `inference.py` 时自动保存） |
-
-**使用方法**：
 ```bash
 python inference.py
 ```
+
 - 自动读取宽表最后 672 行作为历史窗口
-- 输出 `prediction [96]` + `confidence [96]`
-- **运行后自动保存** `pred.npy` 和 `conf.npy` 到 `power_price/data/`
-- B → C 数据契约：`np.ndarray [96]`, dtype float64
+- 输出 `pred.npy` + `conf.npy` 到 `power_price/data/`（**单日 96 点，仅用于调试**）
 
 **编程式调用**：
+
 ```python
 from inference import PricePredictor
 import pandas as pd
@@ -216,48 +230,70 @@ predictor = PricePredictor(
     scaler_path="power_price/data/scaler.pkl",
     mask_path="power_price/data/feature_mask.json"
 )
-df = pd.read_csv("power_price/data/aligned_15min_full.csv", parse_dates=['times'], index_col='times')
-pred, conf = predictor.predict(df)
-```
 
-**批量/滚动预测**（`predict_batch`）：
-```python
+# 单日预测（历史窗口最后 672 行）
+df = pd.read_csv("power_price/data/aligned_15min_processed.csv", parse_dates=['times'], index_col='times')
+pred, conf = predictor.predict(df)  # pred.shape == (96,)
+
+# 批量/滚动预测（测试期必需：将预测值逐日写回 A 列）
 preds, confs, tss = predictor.predict_batch(
     df_input=df_features,
     target_dates=pd.date_range('2026-01-01', periods=59, freq='D'),
-    target_col="A"  # 启用滚动预测：每天预测后把电价写回 df_input
+    skip_insufficient=True,
+    target_col="A"
 )
 ```
 
 ---
 
-### 阶段三：策略算法（成员 C）
+### 策略算法（在 `power_price/` 目录下运行）
 
-> 以下模块位于 `power_price/` 目录，建议在该目录下运行策略相关命令。
+#### `main.py` — 策略生成主入口
 
-#### 8. `strategy_core.cpp` + `strategy_core.so` — C++ 核心搜索（Day 12）
+**方式一：端到端（推荐，完整 59 天输出）**
 
-| 项目 | 路径 |
-|:---|:---|
-| **输入** | 内存中的 `double[96]` 电价数组 |
-| **输出** | 最优 `(tc, td)` 索引与预期收益 |
-
-**编译方法**（如 `.so` 缺失或需更新）：
 ```bash
 cd power_price
-g++ -O2 -shared -fPIC -o strategy_core.so strategy_core.cpp
+python main.py --input-csv test_data/test_in_feature_ori.csv --output output/output.csv
 ```
 
----
+- 自动完成：特征工程 → 模型预测 → 风险管理 → 策略搜索
+- 输出：`times, 实时价格(预测), power`
+- `power` 列：充电时段 = `-1000`，放电时段 = `+1000`，其余 = `0`
+- **输出形状应为 `(5664, 3)`**
 
-#### 9. `strategy_wrapper.py` — Python 封装层（Day 12）
+**方式二：从单日 .npy 调试（仅 96 行，开发调试用）**
 
-| 项目 | 路径 |
-|:---|:---|
-| **输入** | `np.ndarray [96]` 电价 + 可选置信度 |
-| **输出** | `dict` 包含 `charge_start`, `discharge_start`, `power_profile`, `expected_profit` |
+```bash
+cd power_price
+python main.py --prediction data/pred.npy --confidence data/conf.npy --output output/output.csv
+```
 
-**使用方法**：
+**方式三：批量 .npy 目录（需自行准备多天预测）**
+
+```bash
+cd power_price
+python main.py --batch --prediction-dir data/preds/ --output output/output.csv
+```
+
+#### `prepare_test_features.py` — Test 特征构造
+
+```python
+from power_price.prepare_test_features import prepare_test_features
+
+df_features = prepare_test_features(
+    test_csv="power_price/test_data/test_in_feature_ori.csv"
+)
+```
+
+- 中文列名映射为英文（如 `系统负荷预测值` → `load_forecast`）
+- 测试期实际值未知：用 `forecast` 填充 `actual`（**注意：这导致 `*_forecast_error` 特征在 test 期间恒为 0**）
+- 测试期真实电价缺失：`A` 列保持 `NaN`，`curtailment_flag` 等依赖 `A` 的特征置 0
+- 从历史 aligned 数据拼接尾部上下文（≥7 天），确保滚动窗口特征计算正确
+- **调用 `features.py`** 生成与训练一致的策略特征、滞后特征，避免列缺失
+
+#### `strategy_wrapper.py` — 充放电策略搜索
+
 ```bash
 cd power_price
 python -c "
@@ -268,123 +304,37 @@ result = optimize_charge_discharge(prices)
 print(result)
 "
 ```
-- 优先调用 `strategy_core.so`（C++ 高性能）
-- 若 C++ 库不可用，自动降级为纯 Python 实现
 
----
+- 优先调用 C++ `strategy_core.so`，若不可用自动降级为纯 Python O(N²) 实现
+- 搜索目标：最大化 `放电时段电价之和 - 充电时段电价之和`
+- 支持置信度惩罚与收益阈值过滤
 
-#### 10. `risk_mgmt.py` — 风险修正（Day 13）
+#### `risk_mgmt.py` — 风险修正
 
-| 项目 | 路径 |
-|:---|:---|
-| **输入** | `prediction [96]`, `confidence [96]`, `config dict` |
-| **输出** | `dict` 包含保守估计、收益阈值、极端价格掩码等 |
-
-**使用方法**：
 ```python
 from power_price.risk_mgmt import apply_risk_management
 
 result = apply_risk_management(prediction, confidence, config={
     "risk_aversion": 0.1,
     "z_score": 1.28,
-    "fixed_profit_threshold": 5000,
+    "fixed_profit_threshold": None,
 })
 adjusted_prediction = result["adjusted_prediction"]
 ```
-- 支持置信度折扣、分位数保守估计、收益阈值、极端价格过滤
-- 参数可通过 `power_price/risk_config.yaml` 持久化配置
+
+- 支持置信度折扣、分位数保守估计、自适应收益阈值、极端价格过滤
+- 参数可通过 `risk_config.yaml` 持久化配置
 
 ---
 
-#### 11. `main.py` — 端到端策略生成主入口（Day 15）
-
-| 项目 | 路径 |
-|:---|:---|
-| **输入1 预测** | `data/pred.npy`（相对 `power_price/` 目录） |
-| **输入2 置信度** | `data/conf.npy`（可选，默认使用 `pred.std() * 0.1`） |
-| **输入3 原始特征** | `test_data/test_in_feature_ori.csv`（通过 `--input-csv`） |
-| **输入4 配置** | `risk_config.yaml`（同目录，可选） |
-| **输出** | `output/output.csv` |
-
-**使用方法**：
-```bash
-cd power_price
-
-# 方式A：从 .npy 文件（单日/批量）
-python main.py --prediction data/pred.npy --confidence data/conf.npy --output output/output.csv
-
-# 方式B：批量模式（多天的 .npy 文件放在同一目录）
-python main.py --batch --prediction-dir data/preds/ --output output/output.csv
-
-# 方式C：从原始 test 特征 CSV 端到端（训练完成后使用，推荐）
-python main.py --input-csv test_data/test_in_feature_ori.csv --output output/output.csv
-```
-- 方式C 内部自动完成：特征工程 → 模型预测 → 策略搜索
-- 输出格式：`times, 实时价格(预测), power`
-- `power` 列：充电时段 = `-1000`，放电时段 = `+1000`，其余 = `0`
-
-#### 12. `prepare_test_features.py` — Test 特征构造（Day 15）
-
-| 项目 | 路径 |
-|:---|:---|
-| **输入1 test特征** | `test_data/test_in_feature_ori.csv`（8列中文原始预测特征） |
-| **输入2 历史数据** | `data/aligned_15min_full.csv` |
-| **输入3 气象数据** | `data/weather_features.csv` |
-| **输出** | 完整特征 DataFrame（含历史上下文 + test 期间 50 维特征） |
-
-**核心逻辑**：
-- 中文列名映射为英文（`系统负荷预测值` → `load_forecast` 等）
-- **测试期实际值未知**：用 `forecast` 填充 `actual`（最佳估计）
-- **测试期真实电价缺失**：`A` 列在 test 期间保持 `NaN`，`curtailment_flag` 被正确置 0
-- 从历史 aligned 数据拼接尾部上下文（≥7天），确保滚动窗口特征计算正确
-- 重新计算全部派生特征（竞价空间、净负荷、渗透率等）与时间编码
-
-**编程式调用**：
-```python
-from power_price.prepare_test_features import prepare_test_features
-df_features = prepare_test_features(test_csv="power_price/test_data/test_in_feature_ori.csv")
-```
-
----
-
-## 三、端到端流水线（推荐）
-
-`run_pipeline.py` 串联了以上所有阶段，按顺序调用各模块。
-
-### 完整运行
+## 手动串联（灵活调试）
 
 ```bash
-# 全流程：数据检查 → 特征工程 → 模型训练 → 策略生成
-python run_pipeline.py --all --epochs 10
-
-# 从原始 test 特征直接生成提交结果（训练完成后使用）
-python run_pipeline.py --input-csv power_price/test_data/test_in_feature_ori.csv --output power_price/output/output.csv
-```
-
-### 分阶段运行
-
-```bash
-# 仅数据预处理
-python run_pipeline.py --stage1
-
-# 仅特征工程（生成 power_price/data/feature_mask.json）
-python run_pipeline.py --stage2
-
-# 仅模型训练（生成 power_price/models/best_model.pt + power_price/data/scaler.pkl）
-python run_pipeline.py --stage3 --epochs 20 --batch-size 64
-
-# 策略生成演示（若模型已存在则真实推理，否则用模拟数据演示）
-python run_pipeline.py --stage4-demo
-```
-
-### 手动串联（灵活调试）
-
-```bash
-# 1. 数据预处理（若 aligned_15min_full.csv 已存在可跳过）
+# 1. 数据预处理
 python Test_Weather_processor.py
 python Dataaligning.py
 
-# 2. 特征工程（生成 power_price/data/feature_mask.json）
+# 2. 特征工程
 python -c "
 import pandas as pd
 from features import build_feature_pipeline
@@ -392,63 +342,53 @@ df = pd.read_csv('power_price/data/aligned_15min_full.csv', parse_dates=['times'
 build_feature_pipeline(df, target_col='A')
 "
 
-# 3. 训练模型（生成 power_price/models/best_model.pt + power_price/data/scaler.pkl）
+# 3. 训练模型
 python train.py
 
-# 4. 推理（生成 power_price/data/pred.npy + conf.npy）
-python inference.py
-
-# 5. 生成策略（生成 power_price/output/output.csv）
+# 4. 生成完整提交结果（端到端）
 cd power_price
-python main.py --prediction data/pred.npy --confidence data/conf.npy --output output/output.csv
+python main.py --input-csv test_data/test_in_feature_ori.csv --output output/output.csv
 ```
 
 ---
 
-## 四、关键接口契约
+## 关键接口契约
 
 | 阶段 | 输出文件 | 接收方 | 数据格式 |
 |:---|:---|:---|:---|
-| Day 1 → Day 2 | `power_price/data/weather_features.csv` | `Dataaligning.py` | 小时级气象特征表 |
-| Day 2 → Day 3 | `power_price/data/aligned_15min_full.csv` | `Dataset.py` / `features.py` | 15min 统一宽表 |
-| Day 3/7 → Day 8 | `power_price/data/feature_mask.json` | `train.py` / `inference.py` | ≤50 维特征名列表 |
-| Day 9 → Day 11 | `power_price/models/best_model.pt` | `inference.py` | PyTorch state_dict |
-| Day 9 → Day 11 | `power_price/data/scaler.pkl` | `inference.py` | sklearn StandardScaler |
-| Day 11 → Day 15 | `power_price/data/pred.npy` | `main.py` | `np.ndarray [96]` float64 |
-| Day 11 → Day 15 | `power_price/data/conf.npy` | `main.py` | `np.ndarray [96]` float64 |
-| Day 15 输入 | `power_price/test_data/test_in_feature_ori.csv` | `prepare_test_features.py` | 原始预测特征（8列中文） |
-| Day 15 → 提交 | `power_price/output/output.csv` | 赛题评测 | `times, 实时价格(预测), power` |
+| Day 1 → Day 2 | `power_price/data/weather_features.csv` | `Dataaligning.py` | 小时级气象特征 |
+| Day 2 → Day 3 | `power_price/data/aligned_15min_full.csv` | `features.py` | 15min 宽表，索引 `times`，目标列 `A` |
+| Day 2 → Day 3 | `power_price/data/aligned_15min_processed.csv` | `Dataset.py` / `train.py` / `inference.py` | 特征工程后宽表，≤50 维特征 |
+| Day 3/7 → Day 8 | `power_price/data/feature_mask.json` | `train.py` / `inference.py` | `list[str]`，≤50 维，无 `A_*` 特征 |
+| Day 9 → Day 11 | `power_price/models/best_model.pt` | `inference.py` | PyTorch `state_dict` |
+| Day 9 → Day 11 | `power_price/data/scaler.pkl` | `inference.py` | `sklearn.StandardScaler` |
+| Day 11 → Day 15 | `power_price/data/pred.npy` | `main.py`（调试） | `np.ndarray [96]`, `float64` |
+| Day 11 → Day 15 | `power_price/data/conf.npy` | `main.py`（调试） | `np.ndarray [96]`, `float64` |
+| 提交输入 | `power_price/test_data/test_in_feature_ori.csv` | `prepare_test_features.py` | 8 列中文原始特征，59 天 |
+| 提交输出 | `power_price/output/output.csv` | 赛题评测 | `times, 实时价格(预测), power`，5664 行 |
 
 ---
 
-## 五、环境依赖
+## 注意事项
 
-```bash
-# 核心依赖
-pip install torch pandas numpy scikit-learn xarray joblib
+1. **目标列名**：电价目标列统一使用 **`A`**（蒙西节点）。若数据使用 `price`，请同步修改各模块的 `target_col` / `price_col` 参数。
 
-# 策略模块可选依赖
-pip install pyyaml  # 用于读取 power_price/risk_config.yaml
-```
-
-**C++ 编译环境**：若需重新编译 `power_price/strategy_core.so`，要求 GCC 9+ 或兼容的 C++ 编译器。
-
----
-
-## 六、注意事项
-
-1. **目标列名**：本项目电价目标列使用 **`A`**（蒙西节点），与 `mengxi_node_price_selected.csv` 原始列名一致。若你的数据使用 `price` 作为列名，请在调用 `PowerDataAligner`、`PowerPriceDataModule`、`build_feature_pipeline` 时同步修改 `target_col` / `price_col` 参数。
-
-2. **时区处理**：NC 气象数据无 TZ 信息，默认视为 UTC 后转 `Asia/Shanghai`；Dataset 加载时会去除时区以便日期比较。
+2. **时区处理**：NC 气象数据无 TZ 信息，视为 UTC 后转 `Asia/Shanghai`；Dataset 加载时去除时区以便日期比较。
 
 3. **防止数据泄露**：
-   - 训练/验证必须**按时间先后分割**，严禁随机打乱。
-   - `StandardScaler` 只能在训练集 `fit`，验证集只能 `transform`。
+   - 训练/验证必须按时间先后分割，严禁随机打乱
+   - `StandardScaler` 只能在训练集 `fit`，验证集只能 `transform`
+   - DataLoader 中 `shuffle=False`
 
-4. **路径一致性**：所有中间产物已统一到 `power_price/data/`、`power_price/models/`、`power_price/output/` 三个目录下，**请勿在根目录下散落 `.npy` / `.json` 文件**。
+4. **路径一致性**：所有中间产物统一到 `power_price/data/`、`power_price/models/`、`power_price/output/` 三个目录，请勿在根目录散落文件。
 
-5. **测试期无真实电价约束**：
-   - 比赛规则规定测试集不提供历史真实电价，代码已严格遵循：
-   - `prepare_test_features.py` 中 test 期间 `A` 列保持 `NaN`，不向前填充历史值
-   - `inference.py` 的 `predict_batch` 支持 `target_col='A'` 滚动预测，每预测一天后将预测电价写回输入，供下一天使用
-   - 当前 `feature_mask.json` 筛选出的 50 维特征不包含历史电价滞后项，因此模型本身不依赖前一日真实电价
+5. **测试期无真实电价**：
+   - `prepare_test_features.py` 中 test 期间 `A` 列保持 `NaN`
+   - `inference.py` 的 `predict_batch` 支持 `target_col='A'` 滚动预测，每天预测后将预测值写回输入
+   - `feature_mask.json` 已排除 `A_*` 衍生特征，确保 test 期间模型输入不依赖历史真实电价
+
+6. **训练 epoch 数**：`train.py` 默认 50 epoch。若 ValMSE 仍高（如 >1.0），建议增至 100 epoch 或调大 `patience`。
+
+7. **输出形状**：使用 `--input-csv` 时输出应为 5664 行（59 天）；使用 `--prediction` 单文件时输出为 96 行（1 天）。
+
+8. **GPU 环境**：若导入 torch/numpy 时报 `GLIBCXX_3.4.29` 错误，请确保 conda 环境已激活（`LD_LIBRARY_PATH` 已由 `libstdcxx.sh` 自动配置）。

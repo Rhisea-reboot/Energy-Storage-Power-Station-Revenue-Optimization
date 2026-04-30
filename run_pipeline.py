@@ -33,7 +33,7 @@ WEATHER_RAW = DATA_DIR / "weather_raw"
 WEATHER_CSV = DATA_DIR / "weather_features.csv"
 PRICE_CSV = DATA_DIR / "mengxi_node_price_selected.csv"
 BOUNDARY_CSV = DATA_DIR / "mengxi_boundary_anon_filtered.csv"
-ALIGNED_CSV = DATA_DIR / "aligned_15min_full.csv"
+ALIGNED_CSV = DATA_DIR / "aligned_15min_processed.csv"
 SCALER_PATH = DATA_DIR / "scaler.pkl"
 FEATURE_MASK = DATA_DIR / "feature_mask.json"
 MODEL_WEIGHTS = MODEL_DIR / "best_model.pt"
@@ -127,10 +127,12 @@ def stage2_feature_engineering(force: bool = False):
     print("运行特征工程管线...")
     from features import build_feature_pipeline
 
-    df = pd.read_csv(ALIGNED_CSV, parse_dates=['times'], index_col='times')
+    # 特征工程需要基于原始对齐数据，输出处理后的数据
+    raw_aligned = DATA_DIR / "aligned_15min_full.csv"
+    df = pd.read_csv(raw_aligned, parse_dates=['times'], index_col='times')
     df_processed, selected_features = build_feature_pipeline(df, target_col=TARGET_COL)
 
-    # 保存处理后的宽表（可选，供调试查看）
+    # 保存处理后的宽表
     processed_path = DATA_DIR / "aligned_15min_processed.csv"
     df_processed.to_csv(processed_path)
     print(f"  ✓ 特征工程完成，选定 {len(selected_features)} 维特征")
@@ -144,7 +146,8 @@ def stage2_feature_engineering(force: bool = False):
 # ==================================================================
 def stage3_train_model(epochs: int = 10, batch_size: int = 32):
     """
-    Day 8-11: ResNet-MLP 训练 (train.py) → 保存 best_model.pt
+    Day 8-11: ResNet-MLP 训练 → 保存 best_model.pt
+    直接复用 train.py 中的 train_model 函数，确保训练逻辑一致。
     """
     print("\n" + "=" * 60)
     print("Stage 3: 模型训练 (Day 8-11)")
@@ -153,68 +156,18 @@ def stage3_train_model(epochs: int = 10, batch_size: int = 32):
     if not FEATURE_MASK.exists():
         raise FileNotFoundError(f"请先运行 Stage 2 生成 {FEATURE_MASK}")
 
-    with open(FEATURE_MASK, "r") as f:
-        feature_cols = json.load(f)
-
-    print(f"加载模型: feature_dim={len(feature_cols)}, epochs={epochs}")
-    from model import PriceModel
-    from Dataset import PowerPriceDataModule
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    data = PowerPriceDataModule(
+    from train import train_model
+    train_model(
         csv_path=str(ALIGNED_CSV),
+        model_save_path=str(MODEL_WEIGHTS),
+        scaler_save_path=str(SCALER_PATH),
+        feature_mask_path=str(FEATURE_MASK),
+        epochs=epochs,
+        batch_size=batch_size,
         train_end_date="2025-10-31",
         val_start_date="2025-11-01",
-        feature_cols=feature_cols,
         target_col=TARGET_COL,
-        lookback_window=LOOKBACK,
-        forecast_horizon=HORIZON,
-        batch_size=batch_size
     )
-    model = PriceModel(feature_dim=len(feature_cols)).to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
-
-    MODEL_DIR.mkdir(parents=True, exist_ok=True)
-
-    import torch.nn.functional as F
-    best_loss = float('inf')
-    for epoch in range(epochs):
-        model.train()
-        train_loss = 0.0
-        for x, y in data.get_train_loader():
-            x, y = x.to(device), y.to(device)
-            pred, conf = model(x)
-            price_loss = F.huber_loss(pred, y)
-            error = torch.abs(pred.detach() - y)
-            conf_loss = F.mse_loss(conf, error)
-            loss = price_loss + 0.2 * conf_loss
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            train_loss += loss.item()
-
-        train_loss /= len(data.get_train_loader())
-
-        model.eval()
-        val_loss = 0.0
-        with torch.no_grad():
-            for x, y in data.get_val_loader():
-                p, _ = model(x.to(device))
-                val_loss += F.mse_loss(p, y.to(device)).item()
-        val_loss /= len(data.get_val_loader())
-
-        print(f"  Epoch {epoch+1:02d}: Train={train_loss:.4f}, Val={val_loss:.4f}")
-        if val_loss < best_loss:
-            best_loss = val_loss
-            torch.save(model.state_dict(), MODEL_WEIGHTS)
-            print("    >>> Model Saved")
-
-    # 保存 scaler
-    import joblib
-    joblib.dump(data.train_dataset.get_scaler(), SCALER_PATH)
-    print(f"  ✓ Scaler 保存至: {SCALER_PATH}")
-    print(f"  ✓ 最佳模型保存至: {MODEL_WEIGHTS}")
 
 
 def stage3_inference_single_day(df_input: pd.DataFrame) -> tuple:

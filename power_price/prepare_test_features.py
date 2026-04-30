@@ -132,10 +132,16 @@ def prepare_test_features(
     combined = aligner.calculate_power_system_features(combined)
     combined = aligner.add_cyclical_time_features(combined)
 
+    # 添加策略特征与滞后特征（与训练时特征工程保持一致）
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from features import add_strategy_features, add_lag_features
+    combined = add_strategy_features(combined, target_col=price_col)
+    combined = add_lag_features(combined, target_col=price_col)
+
     # 清理极端值与缺失值（A 列除外，保持 NaN）
     combined = combined.replace([np.inf, -np.inf], np.nan)
     fill_cols = [c for c in combined.columns if c != price_col]
-    combined[fill_cols] = combined[fill_cols].ffill().bfill()
+    combined[fill_cols] = combined[fill_cols].ffill().bfill().fillna(0)
     # 历史期间的 A 保留原值，test 期间保持 NaN
 
     print(f"  拼接后总维度: {combined.shape}")
